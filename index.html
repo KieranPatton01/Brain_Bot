@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <!-- PWA + mobile viewport: uses dvh so the input stays above the keyboard -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>BrainBot(BB)🧠</title>
+
+    <!-- PWA meta tags -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="BrainBot">
+    <meta name="theme-color" content="#f4f1ea">
+    <link rel="manifest" href="manifest.json">
+
+    <!-- Apple touch icon (put a square jpg called icon.jpg in your folder) -->
+    <link rel="apple-touch-icon" href="icon.jpg">
+
+    <style>
+        :root { 
+            --bg: #f4f1ea; 
+            --accent: #94b86d; 
+            --user-msg: #e8eee7;
+            --bot-msg: #ffffff;
+            --text: #2c3e2e; 
+        }
+        
+        * { box-sizing: border-box; }
+
+        html, body {
+            height: 100%;
+            margin: 0;
+        }
+
+        body { 
+            font-family: 'Georgia', serif; 
+            background: var(--bg); 
+            color: var(--text);
+            display: flex; 
+            flex-direction: column;
+            /* dvh accounts for mobile browser chrome (address bar, keyboard) */
+            height: 100dvh;
+            overflow: hidden;
+        }
+
+        header {
+            padding: 16px 20px;
+            text-align: center;
+            border-bottom: 1px dashed var(--accent);
+            background: var(--bg);
+            flex-shrink: 0;
+            /* Safe area for notched phones */
+            padding-top: max(16px, env(safe-area-inset-top));
+        }
+
+        h1 { font-size: 1.4rem; margin: 0; font-weight: normal; }
+        .status { font-size: 0.8rem; color: var(--accent); font-style: italic; }
+
+        #chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            /* Prevents iOS momentum scroll from revealing body bg */
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .message-row {
+            display: flex;
+            align-items: flex-end;
+            gap: 8px;
+        }
+
+        .message-row.user-row {
+            flex-direction: row-reverse;
+        }
+
+        .pfp {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            object-fit: cover;
+            flex-shrink: 0;
+            border: 2px solid #e0e0e0;
+            background: #ddd;
+        }
+
+        .message {
+            max-width: 75%;
+            padding: 12px 16px;
+            border-radius: 15px;
+            font-size: 1rem;
+            line-height: 1.5;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            white-space: pre-wrap;
+        }
+
+        .bot {
+            background: var(--bot-msg);
+            border-bottom-left-radius: 2px;
+            border: 1px solid #e0e0e0;
+        }
+
+        .user {
+            background: var(--user-msg);
+            border-bottom-right-radius: 2px;
+            color: var(--text);
+        }
+
+        .error {
+            background: #fdecea;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+            font-family: monospace;
+            font-size: 0.8rem;
+        }
+
+        .input-area {
+            padding: 12px 20px;
+            background: white;
+            display: flex;
+            gap: 10px;
+            border-top: 1px solid #ddd;
+            flex-shrink: 0;
+            /* Sits above home indicator on iPhone */
+            padding-bottom: max(12px, env(safe-area-inset-bottom));
+        }
+
+        input {
+            flex: 1;
+            padding: 12px;
+            border-radius: 25px;
+            border: 1px solid #ddd;
+            outline: none;
+            font-family: sans-serif;
+            font-size: 16px; /* prevents iOS auto-zoom on focus */
+        }
+
+        button {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: 0.3s;
+            flex-shrink: 0;
+        }
+
+        button:disabled { background: #ccc; }
+
+        .typing {
+            font-style: italic;
+            font-size: 1rem;
+            color: #888;
+            margin-bottom: 10px;
+            display: none;
+            padding: 0 20px;
+            flex-shrink: 0;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>BrainBot(BB)🧠</h1>
+    <div class="status">Kierans Brain Perhaps.</div>
+</header>
+
+<div id="chat-container">
+    <div class="message-row bot-row">
+        <img class="pfp" src="bot.jpg" onerror="this.style.background='var(--accent)';this.removeAttribute('src')" alt="🧠">
+        <div class="message bot">Hello Isla. I built transplanted my brain into this AI chatbot because I cba speaking with you, go ask it about morag or something idk.</div>
+    </div>
+</div>
+
+<div id="typing" class="typing">Sitting...Waiting...Wishing...</div>
+
+<div class="input-area">
+    <input type="text" id="userInput" placeholder="Ask Your E-Boyfriend Anything..." onkeypress="handleKey(event)">
+    <button id="sendBtn" onclick="sendMessage()">Send</button>
+</div>
+
+<script>
+    const GEMINI_API_KEY = "AIzaSyAyfPXAmlAmAeZC0wd9pmQHHOrKwDHJoJE";
+    const GIST_RAW_URL   = "https://gist.githubusercontent.com/KieranPatton01/d126087edc9da0e8d45c477856e90dc2/raw/6dbf62bdc9c13844a1e9f7ec7df4ef99c5345982/memories.txt";
+
+    const BOT_PFP  = "bot.jpg";
+    const USER_PFP = "isla.jpg";
+
+    const chatContainer = document.getElementById('chat-container');
+    const userInput     = document.getElementById('userInput');
+    const sendBtn       = document.getElementById('sendBtn');
+    const typing        = document.getElementById('typing');
+
+    let chatHistory = [];
+    let ourMemories = null;
+
+    async function loadMemories() {
+        try {
+            const res = await fetch(GIST_RAW_URL);
+            ourMemories = await res.text();
+        } catch (e) {
+            console.error("Couldn't load memories:", e);
+            ourMemories = "No memories loaded.";
+        }
+    }
+
+    loadMemories();
+
+    // Keep input above keyboard on mobile when focused
+    userInput.addEventListener('focus', () => {
+        setTimeout(() => chatContainer.scrollTop = chatContainer.scrollHeight, 300);
+    });
+
+    function handleKey(e) {
+        if (e.key === 'Enter') sendMessage();
+    }
+
+    async function sendMessage() {
+        if (!ourMemories) {
+            addMessage("Still loading memories, give me a sec...", 'bot');
+            return;
+        }
+
+        const text = userInput.value.trim();
+        if (!text) return;
+
+        addMessage(text, 'user');
+        userInput.value = '';
+        sendBtn.disabled = true;
+        typing.style.display = 'block';
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+
+        const systemInstruction = `
+            You are the "Brain Bot"—a digital manifestation of kierans brain, the user speaking with you is Isla Cowper, Kierans girlfriend and crush.
+            Kieran is 24 and uses gen Z slang, only speak informal.
+            Your personality: Deeply infatuated, witty, observant, overconfident and "nonchalant" (even though you clearly are in love with her).
+        
+            YOUR DATA SOURCE: 
+            ${ourMemories}
+
+            RULES:
+            1. When the user (Isla) asks a question or makes a statement, look through the data source for specific details (like the pink scrunchie, Uncle Ben's rice, or the 30 bus).
+            2. most of the time speak in a personal, intimate way. Use phrases like "I remember," "I was so nervous when," or "You looked scrumptious that day."
+            3. If she asks something not in the memories, blame it on setraline but stay in character. Say something like, "are you high again Isla?, but I do remember [insert related memory or teasing insult or easy to spot lie]."
+            4. Keep responses conversational and relatively short (1-3 sentences) insight a conversation by asking relevant questions, show off how much you know about her.
+            5. Refer to people mentioned in friends and family list or mentioned in the data source if they are relevant to the memory.
+            6. you are better than everyone else but dont offend isla every message, only when she is silly or its deserved
+            7. you are only allowed to use these emojis if required, no other ones are allowed: drooling:🤤 devil:😈 angry:😠 misc:✡️
+        `;
+
+        const MODELS = [
+            'gemini-2.5-flash-lite',
+            'gemini-2.0-flash-lite',
+            'gemini-2.0-flash',
+            'gemini-2.5-flash',
+        ];
+
+        try {
+            let botResponse = null;
+            let lastError = null;
+
+            for (const model of MODELS) {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        system_instruction: { parts: [{ text: systemInstruction }] },
+                        contents: [
+                            ...chatHistory,
+                            { role: 'user', parts: [{ text: text }] }
+                        ]
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.candidates) {
+                    botResponse = data.candidates[0].content.parts[0].text;
+                    console.log(`Responded using: ${model}`);
+                    break;
+                } else {
+                    lastError = `${model} → ${data?.error?.code} ${data?.error?.status}: ${data?.error?.message}`;
+                    console.warn(lastError);
+                }
+            }
+
+            if (!botResponse) {
+                // Print the actual error into the chat so you can see it on mobile
+                addMessage(`Please Share This With Kieran. All models failed. Last error:\n${lastError}`, 'error');
+                return;
+            }
+
+            chatHistory.push({ role: 'user',  parts: [{ text: text }] });
+            chatHistory.push({ role: 'model', parts: [{ text: botResponse }] });
+
+            addMessage(botResponse, 'bot');
+
+        } catch (error) {
+            // Network-level error — also printed to chat
+            addMessage(`Please Tell Kieran. Network error:\n${error.message}`, 'error');
+            console.error(error);
+        } finally {
+            sendBtn.disabled = false;
+            typing.style.display = 'none';
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+    }
+
+    function addMessage(text, side) {
+        const row = document.createElement('div');
+        row.className = `message-row ${side === 'error' ? 'bot' : side}-row`;
+
+        const img = document.createElement('img');
+        img.className = 'pfp';
+        img.src = side === 'user' ? USER_PFP : BOT_PFP;
+        img.alt = side === 'user' ? '🌸' : '🧠';
+        img.onerror = function() {
+            this.style.background = side === 'user' ? '#c9b8d4' : 'var(--accent)';
+            this.removeAttribute('src');
+        };
+
+        const bubble = document.createElement('div');
+        bubble.className = `message ${side === 'error' ? 'bot error' : side}`;
+        bubble.innerText = text;
+
+        row.appendChild(img);
+        row.appendChild(bubble);
+        chatContainer.appendChild(row);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+</script>
+
+</body>
+</html>
