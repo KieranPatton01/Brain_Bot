@@ -12,7 +12,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="BrainBot">
     <meta name="theme-color" content="#f4f1ea">
-    <link rel="manifest" href="manifest.json">
+    <link rel="manifest" href="./manifest.json">
 
     <!-- Apple touch icon (put a square jpg called icon.jpg in your folder) -->
     <link rel="apple-touch-icon" href="icon.jpg">
@@ -122,10 +122,10 @@
             padding: 12px 20px;
             background: white;
             display: flex;
+            align-items: center;
             gap: 10px;
             border-top: 1px solid #ddd;
             flex-shrink: 0;
-            /* Sits above home indicator on iPhone */
             padding-bottom: max(12px, env(safe-area-inset-bottom));
         }
 
@@ -136,7 +136,11 @@
             border: 1px solid #ddd;
             outline: none;
             font-family: sans-serif;
-            font-size: 16px; /* prevents iOS auto-zoom on focus */
+            font-size: 16px;
+            height: 46px;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
         }
 
         button {
@@ -173,7 +177,9 @@
 <div id="chat-container">
     <div class="message-row bot-row">
         <img class="pfp" src="bot.jpg" onerror="this.style.background='var(--accent)';this.removeAttribute('src')" alt="🧠">
-        <div class="message bot">Hello Isla. I built transplanted my brain into this AI chatbot because I cba speaking with you, go ask it about morag or something idk.</div>
+        <div class="message bot">
+            Hello Isla. I built transplanted my brain into this AI chatbot because I cba speaking with you, go ask it about morag or something idk.
+        </div>
     </div>
 </div>
 
@@ -185,8 +191,8 @@
 </div>
 
 <script>
-    const GEMINI_API_KEY = "REPLACE_WITH_YOUR_GEMINI_KEY";
-    const GIST_RAW_URL   = "https://gist.githubusercontent.com/KieranPatton01/d126087edc9da0e8d45c477856e90dc2/raw/6dbf62bdc9c13844a1e9f7ec7df4ef99c5345982/memories.txt";
+    const WORKER_URL    = "https://snowy-cell-669e.isingingbanana.workers.dev";
+    const GIST_RAW_URL  = "https://gist.githubusercontent.com/KieranPatton01/d126087edc9da0e8d45c477856e90dc2/raw/6dbf62bdc9c13844a1e9f7ec7df4ef99c5345982/memories.txt";
 
     const BOT_PFP  = "bot.jpg";
     const USER_PFP = "isla.jpg";
@@ -265,16 +271,18 @@
             let lastError = null;
 
             for (const model of MODELS) {
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
-                const response = await fetch(url, {
+                const response = await fetch(WORKER_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        system_instruction: { parts: [{ text: systemInstruction }] },
-                        contents: [
-                            ...chatHistory,
-                            { role: 'user', parts: [{ text: text }] }
-                        ]
+                        model: model,
+                        payload: {
+                            system_instruction: { parts: [{ text: systemInstruction }] },
+                            contents: [
+                                ...chatHistory,
+                                { role: 'user', parts: [{ text: text }] }
+                            ]
+                        }
                     })
                 });
 
@@ -292,7 +300,7 @@
 
             if (!botResponse) {
                 // Print the actual error into the chat so you can see it on mobile
-                addMessage(`Please Share This With Kieran. All models failed. Last error:\n${lastError}`, 'error');
+                addMessage(`All models failed. Last error:\n${lastError}`, 'error');
                 return;
             }
 
@@ -303,7 +311,7 @@
 
         } catch (error) {
             // Network-level error — also printed to chat
-            addMessage(`Please Tell Kieran. Network error:\n${error.message}`, 'error');
+            addMessage(`Network error:\n${error.message}`, 'error');
             console.error(error);
         } finally {
             sendBtn.disabled = false;
