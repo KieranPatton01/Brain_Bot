@@ -190,7 +190,6 @@
 
 <script>
     const WORKER_URL    = "https://snowy-cell-669e.isingingbanana.workers.dev";
-    const GIST_RAW_URL  = "https://gist.githubusercontent.com/KieranPatton01/d126087edc9da0e8d45c477856e90dc2/raw/memories.txt";
 
     const BOT_PFP  = "bot.jpg";
     const USER_PFP = "isla.jpg";
@@ -201,19 +200,6 @@
     const typing        = document.getElementById('typing');
 
     let chatHistory = [];
-    let ourMemories = null;
-
-    async function loadMemories() {
-        try {
-            const res = await fetch(GIST_RAW_URL);
-            ourMemories = await res.text();
-        } catch (e) {
-            console.error("Couldn't load memories:", e);
-            ourMemories = "No memories loaded.";
-        }
-    }
-
-    loadMemories();
 
     // Keep input above keyboard on mobile when focused
     userInput.addEventListener('focus', () => {
@@ -225,12 +211,7 @@
     }
 
     async function sendMessage() {
-        if (!ourMemories) {
-            addMessage("Still loading memories, give me a sec...", 'bot');
-            return;
-        }
-
-        const text = userInput.value.trim();
+        const text = userInput.value.trim().slice(0, 500);
         if (!text) return;
 
         addMessage(text, 'user');
@@ -238,24 +219,6 @@
         sendBtn.disabled = true;
         typing.style.display = 'block';
         chatContainer.scrollTop = chatContainer.scrollHeight;
-
-        const systemInstruction = `
-            You are the "Brain Bot"—a digital manifestation of kierans brain, the user speaking with you is Isla Cowper, Kierans girlfriend and crush.
-            Kieran is 24 and uses gen Z slang, only speak informal.
-            Your personality: Deeply infatuated, witty, observant, overconfident and "nonchalant" (even though you clearly are in love with her).
-        
-            YOUR DATA SOURCE: 
-            ${ourMemories}
-
-            RULES:
-            1. When the user (Isla) asks a question or makes a statement, look through the data source for specific details (like the pink scrunchie, Uncle Ben's rice, or the 30 bus).
-            2. most of the time speak in a personal, intimate way. Use phrases like "I remember," "I was so nervous when," or "You looked scrumptious that day."
-            3. If she asks something not in the memories, blame it on setraline but stay in character. Say something like, "are you high again Isla?, but I do remember [insert related memory or teasing insult or easy to spot lie]."
-            4. Keep responses conversational and relatively short (1-3 sentences) insight a conversation by asking relevant questions, show off how much you know about her.
-            5. Refer to people mentioned in friends and family list or mentioned in the data source if they are relevant to the memory.
-            6. you are better than everyone else but dont offend isla every message, only when she is silly or its deserved
-            7. you are only allowed to use these emojis if required, no other ones are allowed: drooling:🤤 devil:😈 angry:😠 misc:✡️
-        `;
 
         const MODELS = [
             'gemini-2.5-flash',
@@ -274,7 +237,6 @@
                     body: JSON.stringify({
                         model: model,
                         payload: {
-                            system_instruction: { parts: [{ text: systemInstruction }] },
                             contents: [
                                 ...chatHistory,
                                 { role: 'user', parts: [{ text: text }] }
@@ -296,8 +258,17 @@
             }
 
             if (!botResponse) {
-                // Print the actual error into the chat so you can see it on mobile
-                addMessage(`All models failed. Last error:\n${lastError}`, 'error');
+                // Check if it's a rate limit or injection error message from our worker
+                if (lastError && (lastError.includes("too fast") || lastError.includes("daily limit") || lastError.includes("Go Fuck Yourself"))) {
+                    // Reliably extract everything after the last ': ' separator
+                    const separatorIndex = lastError.lastIndexOf(": ");
+                    const errorText = separatorIndex !== -1 ? lastError.slice(separatorIndex + 2) : lastError;
+                    addMessage(errorText, 'error');
+                } else {
+                    // Generic error for everything else
+                    addMessage("Something went wrong. Please try again in a moment.", 'error');
+                }
+                console.error("All models failed. Last error:\n" + lastError);
                 return;
             }
 
@@ -307,8 +278,8 @@
             addMessage(botResponse, 'bot');
 
         } catch (error) {
-            // Network-level error — also printed to chat
-            addMessage(`Network error:\n${error.message}`, 'error');
+            // Generic network error for UI
+            addMessage("Network error. Please try again in a moment.", 'error');
             console.error(error);
         } finally {
             sendBtn.disabled = false;

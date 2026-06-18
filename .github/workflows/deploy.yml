@@ -9,8 +9,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Inject API key
-        run: sed -i 's|REPLACE_WITH_YOUR_GEMINI_KEY|${{ secrets.GEMINI_API_KEY }}|g' index.html
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
